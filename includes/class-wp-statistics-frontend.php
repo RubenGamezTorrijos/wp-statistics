@@ -2,6 +2,8 @@
 
 namespace WP_STATISTICS;
 
+use GeoIp2\Record\Continent;
+
 class Frontend
 {
     public function __construct()
@@ -26,7 +28,39 @@ class Frontend
         if (Option::get('show_hits')) {
             add_filter('the_content', array($this, 'show_hits'));
         }
+
+        # Add tracker javascript for users who enabled AMP plugin
+        if (function_exists('amp_is_enabled')) {
+            add_action('wp_head', array($this, 'add_amp_cdn_script'));
+            add_filter('the_content', array($this, 'add_amp_tracker_script_to_content'), 10, 1);
+        }
     }
+
+
+    /**
+     * This function adds amp script to the head
+     */
+    public function add_amp_cdn_script()
+    {
+        ?>  
+            <script src="https://cdn.ampproject.org/v0/amp-script-0.1.mjs" custom-element="amp-script" type="module" crossorigin="anonymous"></script>
+        <?php
+    }
+
+
+    /**
+     * This function adds a tracker for AMP plugin
+     */
+    public function add_amp_tracker_script_to_content($content)
+    {
+        $jsArgs = $this->generate_tracker_js_arguments();
+        $trackerJsContent = file_get_contents(WP_STATISTICS_URL . 'assets/js/tracker.js');
+
+        return '<script id="amp-tracker-script" type="text/plain" target="amp-script">
+            var WP_Statistics_Tracker_Object = ' . json_encode($jsArgs) . '; ' . $trackerJsContent . '</script>' .
+            '<amp-script layout="container" script="amp-tracker-script" data-ampdevmode>' . $content . '</amp-script>';
+    }
+
 
     /**
      * Footer Action
@@ -47,6 +81,16 @@ class Frontend
     {
         wp_enqueue_script('wp-statistics-tracker', WP_STATISTICS_URL . 'assets/js/tracker.js');
 
+        $jsArgs = $this->generate_tracker_js_arguments();
+        wp_localize_script('wp-statistics-tracker', 'WP_Statistics_Tracker_Object', $jsArgs);
+    }
+
+
+    /**
+     * This function generates arguments for tracker.js
+     */
+    public function generate_tracker_js_arguments()
+    {
         $params = array(
             Hits::$rest_hits_key => 'yes',
         );
@@ -71,11 +115,11 @@ class Frontend
             ],
         );
 
-        wp_localize_script('wp-statistics-tracker', 'WP_Statistics_Tracker_Object', $jsArgs);
+        return $jsArgs;
     }
 
     /**
-     * Enqueue Scripts
+     * Enqueue Styles
      */
     public function enqueue_styles()
     {
